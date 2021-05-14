@@ -21,6 +21,7 @@ package org.apache.hudi.table;
 import org.apache.hudi.common.fs.FSUtils;
 import org.apache.hudi.common.model.HoodieBaseFile;
 import org.apache.hudi.common.model.HoodieLogFile;
+import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieTableType;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
 import org.apache.hudi.common.table.TableSchemaResolver;
@@ -38,6 +39,7 @@ import org.apache.hudi.table.format.mor.MergeOnReadInputFormat;
 import org.apache.hudi.table.format.mor.MergeOnReadInputSplit;
 import org.apache.hudi.table.format.mor.MergeOnReadTableState;
 import org.apache.hudi.util.AvroSchemaConverter;
+import org.apache.hudi.util.ChangelogModes;
 import org.apache.hudi.util.StreamerUtil;
 
 import org.apache.avro.Schema;
@@ -199,7 +201,11 @@ public class HoodieTableSource implements
 
   @Override
   public ChangelogMode getChangelogMode() {
-    return ChangelogMode.insertOnly();
+    if (conf.getBoolean(FlinkOptions.READ_AS_STREAMING)) {
+      return ChangelogModes.FULL;
+    } else {
+      return ChangelogMode.insertOnly();
+    }
   }
 
   @Override
@@ -330,13 +336,16 @@ public class HoodieTableSource implements
     TableSchemaResolver schemaUtil = new TableSchemaResolver(metaClient);
     final Schema tableAvroSchema;
     try {
-      tableAvroSchema = schemaUtil.getTableAvroSchema();
+      tableAvroSchema = schemaUtil.getTableAvroSchema(true);
     } catch (Exception e) {
       throw new HoodieException("Get table avro schema error", e);
     }
     final DataType rowDataType = AvroSchemaConverter.convertToDataType(tableAvroSchema);
     final RowType rowType = (RowType) rowDataType.getLogicalType();
     final RowType requiredRowType = (RowType) getProducedDataType().notNull().getLogicalType();
+
+    final Schema.Field operationField = tableAvroSchema.getField(HoodieRecord.CDC_OPERATION_METADATA_FIELD);
+    final int operationPos = operationField == null ? -1 : operationField.pos();
 
     final String queryType = this.conf.getString(FlinkOptions.QUERY_TYPE);
     switch (queryType) {
@@ -373,6 +382,7 @@ public class HoodieTableSource implements
                 .defaultPartName(conf.getString(FlinkOptions.PARTITION_DEFAULT_NAME))
                 .limit(this.limit)
                 .emitDelete(isStreaming)
+                .operationPos(operationPos)
                 .build();
           case COPY_ON_WRITE:
             if (isStreaming) {
