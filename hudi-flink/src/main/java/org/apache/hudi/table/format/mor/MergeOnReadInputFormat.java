@@ -18,7 +18,6 @@
 
 package org.apache.hudi.table.format.mor;
 
-import org.apache.hudi.common.model.HoodieCdcOperation;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieRecordPayload;
 import org.apache.hudi.common.table.log.InstantRange;
@@ -133,11 +132,6 @@ public class MergeOnReadInputFormat
    */
   private boolean emitDelete;
 
-  /**
-   * Position of the hoodie cdc operation.
-   */
-  private int operationPos;
-
   private MergeOnReadInputFormat(
       Configuration conf,
       Path[] paths,
@@ -145,8 +139,7 @@ public class MergeOnReadInputFormat
       List<DataType> fieldTypes,
       String defaultPartName,
       long limit,
-      boolean emitDelete,
-      int operationPos) {
+      boolean emitDelete) {
     this.conf = conf;
     this.paths = paths;
     this.tableState = tableState;
@@ -158,7 +151,6 @@ public class MergeOnReadInputFormat
     this.requiredPos = tableState.getRequiredPositions();
     this.limit = limit;
     this.emitDelete = emitDelete;
-    this.operationPos = operationPos;
   }
 
   /**
@@ -351,17 +343,12 @@ public class MergeOnReadInputFormat
             // skipping if the condition is unsatisfied
             // continue;
           } else {
-            final IndexedRecord avroRecord = curAvroRecord.get();
             GenericRecord requiredAvroRecord = buildAvroRecordBySchema(
-                avroRecord,
+                curAvroRecord.get(),
                 requiredSchema,
                 requiredPos,
                 recordBuilder);
             currentRecord = (RowData) avroToRowDataConverter.convert(requiredAvroRecord);
-            final RowKind rowKind = FormatUtils.getRowKind(avroRecord, operationPos);
-            if (rowKind != null) {
-              currentRecord.setRowKind(rowKind);
-            }
             return true;
           }
         }
@@ -619,7 +606,8 @@ public class MergeOnReadInputFormat
         while (logKeysIterator.hasNext()) {
           final String curKey = logKeysIterator.next();
           if (!keyToSkip.contains(curKey)) {
-            Option<IndexedRecord> insertAvroRecord = getInsertValue(curKey);
+            Option<IndexedRecord> insertAvroRecord =
+                logRecords.get(curKey).getData().getInsertValue(tableSchema);
             if (insertAvroRecord.isPresent()) {
               // the record is a DELETE if insertAvroRecord not present, skipping
               GenericRecord requiredAvroRecord = buildAvroRecordBySchema(
@@ -634,14 +622,6 @@ public class MergeOnReadInputFormat
         }
         return true;
       }
-    }
-
-    private Option<IndexedRecord> getInsertValue(String curKey) throws IOException {
-      final HoodieRecord<?> record = logRecords.get(curKey);
-      if (HoodieCdcOperation.isDelete(record.getOperation())) {
-        return Option.empty();
-      }
-      return record.getData().getInsertValue(tableSchema);
     }
 
     @Override
@@ -659,12 +639,8 @@ public class MergeOnReadInputFormat
     private Option<IndexedRecord> mergeRowWithLog(
         RowData curRow,
         String curKey) throws IOException {
-      final HoodieRecord<?> record = logRecords.get(curKey);
-      if (HoodieCdcOperation.isDelete(record.getOperation())) {
-        return Option.empty();
-      }
       GenericRecord historyAvroRecord = (GenericRecord) rowDataToAvroConverter.convert(tableSchema, curRow);
-      return record.getData().combineAndGetUpdateValue(historyAvroRecord, tableSchema);
+      return logRecords.get(curKey).getData().combineAndGetUpdateValue(historyAvroRecord, tableSchema);
     }
   }
 
@@ -679,7 +655,6 @@ public class MergeOnReadInputFormat
     private String defaultPartName;
     private long limit = -1;
     private boolean emitDelete = false;
-    private int operationPos = -1;
 
     public Builder config(Configuration conf) {
       this.conf = conf;
@@ -716,14 +691,9 @@ public class MergeOnReadInputFormat
       return this;
     }
 
-    public Builder operationPos(int operationPos) {
-      this.operationPos = operationPos;
-      return this;
-    }
-
     public MergeOnReadInputFormat build() {
       return new MergeOnReadInputFormat(conf, paths, tableState,
-          fieldTypes, defaultPartName, limit, emitDelete, operationPos);
+          fieldTypes, defaultPartName, limit, emitDelete);
     }
   }
 
@@ -741,10 +711,5 @@ public class MergeOnReadInputFormat
   @VisibleForTesting
   public void isEmitDelete(boolean emitDelete) {
     this.emitDelete = emitDelete;
-  }
-
-  @VisibleForTesting
-  public void setOperationPos(int operationPos) {
-    this.operationPos = operationPos;
   }
 }
