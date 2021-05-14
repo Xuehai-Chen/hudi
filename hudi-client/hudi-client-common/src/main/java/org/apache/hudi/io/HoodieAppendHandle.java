@@ -24,7 +24,6 @@ import org.apache.hudi.common.engine.TaskContextSupplier;
 import org.apache.hudi.common.fs.FSUtils;
 import org.apache.hudi.common.model.BaseFile;
 import org.apache.hudi.common.model.FileSlice;
-import org.apache.hudi.common.model.HoodieCdcOperation;
 import org.apache.hudi.common.model.HoodieDeltaWriteStat;
 import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieLogFile;
@@ -180,23 +179,11 @@ public class HoodieAppendHandle<T extends HoodieRecordPayload, I, K, O> extends 
   }
 
   /**
-   * Returns whether the hoodie record belongs to an UPDATE bucket.
+   * Returns whether the hoodie record is an UPDATE.
    */
-  protected boolean isUpdateBucket(HoodieRecord<T> hoodieRecord) {
+  protected boolean isUpdateRecord(HoodieRecord<T> hoodieRecord) {
     // If currentLocation is present, then this is an update
     return hoodieRecord.getCurrentLocation() != null;
-  }
-
-  /**
-   * Add cdc operation to the record, default do nothing.
-   *
-   * @param record The record
-   * @param flag   The change flag name.
-   *
-   * @see HoodieCdcOperation
-   */
-  protected void addOperationToRecord(GenericRecord record, String flag) {
-    // no operation
   }
 
   private Option<IndexedRecord> getIndexedRecord(HoodieRecord<T> hoodieRecord) {
@@ -211,13 +198,8 @@ public class HoodieAppendHandle<T extends HoodieRecordPayload, I, K, O> extends 
         HoodieAvroUtils.addHoodieKeyToRecord((GenericRecord) avroRecord.get(), hoodieRecord.getRecordKey(),
             hoodieRecord.getPartitionPath(), fileId);
         HoodieAvroUtils.addCommitMetadataToRecord((GenericRecord) avroRecord.get(), instantTime, seqId);
-        addOperationToRecord((GenericRecord) avroRecord.get(), hoodieRecord.getOperation());
-        if (isUpdateBucket(hoodieRecord)) {
-          if (HoodieCdcOperation.isDelete(hoodieRecord.getOperation())) {
-            recordsDeleted++;
-          } else {
-            updatedRecordsWritten++;
-          }
+        if (isUpdateRecord(hoodieRecord)) {
+          updatedRecordsWritten++;
         } else {
           insertRecordsWritten++;
         }
@@ -424,7 +406,8 @@ public class HoodieAppendHandle<T extends HoodieRecordPayload, I, K, O> extends 
     return statuses;
   }
 
-  private Writer createLogWriter(Option<FileSlice> fileSlice, String baseCommitTime) throws IOException {
+  private Writer createLogWriter(Option<FileSlice> fileSlice, String baseCommitTime)
+      throws IOException, InterruptedException {
     Option<HoodieLogFile> latestLogFile = fileSlice.get().getLatestLogFile();
 
     return HoodieLogFormat.newWriterBuilder()
