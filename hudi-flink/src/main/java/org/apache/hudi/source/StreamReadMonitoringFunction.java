@@ -228,6 +228,7 @@ public class StreamReadMonitoringFunction
       LOG.warn("No files found for reading in user provided path. " +
                       "MetadataList: {}, writePartitions: {}, fileStatuses: {}",
               metadataList, writePartitions, fileStatuses);
+      return;
     }
 
     HoodieTableFileSystemView fsView = new HoodieTableFileSystemView(metaClient, commitTimeline, fileStatuses);
