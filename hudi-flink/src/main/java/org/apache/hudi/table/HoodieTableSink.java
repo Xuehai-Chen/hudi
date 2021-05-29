@@ -114,7 +114,7 @@ public class HoodieTableSink implements DynamicTableSink, SupportsPartitioning, 
   @Override
   public ChangelogMode getChangelogMode(ChangelogMode changelogMode) {
     // ignore RowKind.UPDATE_BEFORE
-    return ChangelogModes.UPSERT;
+    return ChangelogModes.FULL;
   }
 
   @Override

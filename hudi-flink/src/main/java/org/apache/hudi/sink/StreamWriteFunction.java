@@ -20,12 +20,7 @@ package org.apache.hudi.sink;
 
 import org.apache.hudi.client.HoodieFlinkWriteClient;
 import org.apache.hudi.client.WriteStatus;
-import org.apache.hudi.common.model.HoodieKey;
-import org.apache.hudi.common.model.HoodieRecord;
-import org.apache.hudi.common.model.HoodieRecordLocation;
-import org.apache.hudi.common.model.HoodieRecordPayload;
-import org.apache.hudi.common.model.HoodieTableType;
-import org.apache.hudi.common.model.WriteOperationType;
+import org.apache.hudi.common.model.*;
 import org.apache.hudi.common.util.CommitUtils;
 import org.apache.hudi.common.util.ObjectSizeCalculator;
 import org.apache.hudi.common.util.ValidationUtils;
@@ -268,18 +263,22 @@ public class StreamWriteFunction<K, I, O>
     private final String key; // record key
     private final String instant; // 'U' or 'I'
     private final HoodieRecordPayload<?> data; // record payload
+    private final String operation;
 
-    private DataItem(String key, String instant, HoodieRecordPayload<?> data) {
+    private DataItem(String key, String instant, HoodieRecordPayload<?> data, String operation) {
       this.key = key;
       this.instant = instant;
       this.data = data;
+      this.operation = operation;
     }
 
     public static DataItem fromHoodieRecord(HoodieRecord<?> record) {
       return new DataItem(
           record.getRecordKey(),
           record.getCurrentLocation().getInstantTime(),
-          record.getData());
+          record.getData(),
+          record.getOperation()
+      );
     }
 
     public HoodieRecord<?> toHoodieRecord(String partitionPath) {
@@ -287,6 +286,7 @@ public class StreamWriteFunction<K, I, O>
       HoodieRecord<?> record = new HoodieRecord<>(hoodieKey, data);
       HoodieRecordLocation loc = new HoodieRecordLocation(instant, null);
       record.setCurrentLocation(loc);
+      record.setOperation(this.operation);
       return record;
     }
   }
@@ -325,6 +325,7 @@ public class StreamWriteFunction<K, I, O>
       HoodieRecord<?> record = new HoodieRecord<>(first.getKey(), first.getData());
       HoodieRecordLocation newLoc = new HoodieRecordLocation(first.getCurrentLocation().getInstantTime(), fileID);
       record.setCurrentLocation(newLoc);
+      record.setOperation(first.getOperation());
 
       recordList.set(0, record);
       return recordList;
@@ -435,6 +436,7 @@ public class StreamWriteFunction<K, I, O>
     DataBucket bucket = this.buckets.computeIfAbsent(bucketID,
         k -> new DataBucket(this.config.getDouble(FlinkOptions.WRITE_BATCH_SIZE), value));
     final DataItem item = DataItem.fromHoodieRecord(value);
+    LOG.info("bufferRecord item:{}, hoodieRecord:{}", item, value);
     boolean flushBucket = bucket.detector.detect(item);
     boolean flushBuffer = this.tracer.trace(bucket.detector.lastRecordSize);
     if (flushBucket) {

@@ -18,6 +18,7 @@
 
 package org.apache.hudi.table.format.mor;
 
+import org.apache.hudi.common.model.HoodieCdcOperation;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieRecordPayload;
 import org.apache.hudi.common.table.log.InstantRange;
@@ -52,6 +53,8 @@ import org.apache.flink.table.types.DataType;
 import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.types.RowKind;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -78,6 +81,8 @@ import static org.apache.hudi.table.format.FormatUtils.buildAvroRecordBySchema;
  */
 public class MergeOnReadInputFormat
     extends RichInputFormat<RowData, MergeOnReadInputSplit> {
+
+  private Logger LOG = LoggerFactory.getLogger(MergeOnReadInputFormat.class);
 
   private static final long serialVersionUID = 1L;
 
@@ -132,6 +137,11 @@ public class MergeOnReadInputFormat
    */
   private boolean emitDelete;
 
+  /**
+   * Position of the hoodie cdc operation.
+   */
+  private int operationPos;
+
   private MergeOnReadInputFormat(
       Configuration conf,
       Path[] paths,
@@ -139,7 +149,8 @@ public class MergeOnReadInputFormat
       List<DataType> fieldTypes,
       String defaultPartName,
       long limit,
-      boolean emitDelete) {
+      boolean emitDelete,
+      int operationPos) {
     this.conf = conf;
     this.paths = paths;
     this.tableState = tableState;
@@ -151,6 +162,7 @@ public class MergeOnReadInputFormat
     this.requiredPos = tableState.getRequiredPositions();
     this.limit = limit;
     this.emitDelete = emitDelete;
+    this.operationPos = operationPos;
   }
 
   /**
@@ -278,6 +290,7 @@ public class MergeOnReadInputFormat
     partSpec.forEach((k, v) -> partObjects.put(k, restorePartValueFromType(
         defaultPartName.equals(v) ? null : v,
         fieldTypes.get(fieldNames.indexOf(k)))));
+    LOG.info("partSpec: {}, partObjects: {}", partSpec, partObjects);
 
     return ParquetSplitReaderUtil.genPartColumnarRowReader(
         this.conf.getBoolean(FlinkOptions.UTC_TIMEZONE),
@@ -324,6 +337,7 @@ public class MergeOnReadInputFormat
           } catch (IOException e) {
             throw new HoodieException("Get avro insert value error for key: " + curAvroKey, e);
           }
+          LOG.info("hoodieRecord: {}, curAvroRecord: {}", hoodieRecord, curAvroRecord);
           if (!curAvroRecord.isPresent()) {
             // delete record found
             if (emitDelete && !pkSemanticLost) {
@@ -343,12 +357,19 @@ public class MergeOnReadInputFormat
             // skipping if the condition is unsatisfied
             // continue;
           } else {
+            final IndexedRecord avroRecord = curAvroRecord.get();
             GenericRecord requiredAvroRecord = buildAvroRecordBySchema(
-                curAvroRecord.get(),
+                avroRecord,
                 requiredSchema,
                 requiredPos,
                 recordBuilder);
             currentRecord = (RowData) avroToRowDataConverter.convert(requiredAvroRecord);
+            final RowKind rowKind = FormatUtils.getRowKind(avroRecord, operationPos);
+            LOG.info("avroRecord:{}", avroRecord);
+            if (rowKind != null) {
+              currentRecord.setRowKind(rowKind);
+              LOG.info("rowKind:{}", rowKind);
+            }
             return true;
           }
         }
@@ -606,8 +627,7 @@ public class MergeOnReadInputFormat
         while (logKeysIterator.hasNext()) {
           final String curKey = logKeysIterator.next();
           if (!keyToSkip.contains(curKey)) {
-            Option<IndexedRecord> insertAvroRecord =
-                logRecords.get(curKey).getData().getInsertValue(tableSchema);
+            Option<IndexedRecord> insertAvroRecord = getInsertValue(curKey);
             if (insertAvroRecord.isPresent()) {
               // the record is a DELETE if insertAvroRecord not present, skipping
               GenericRecord requiredAvroRecord = buildAvroRecordBySchema(
@@ -636,6 +656,14 @@ public class MergeOnReadInputFormat
       }
     }
 
+    private Option<IndexedRecord> getInsertValue(String curKey) throws IOException {
+      final HoodieRecord<?> record = logRecords.get(curKey);
+      if (HoodieCdcOperation.isDelete(record.getOperation())) {
+        return Option.empty();
+      }
+      return record.getData().getInsertValue(tableSchema);
+    }
+
     private Option<IndexedRecord> mergeRowWithLog(
         RowData curRow,
         String curKey) throws IOException {
@@ -655,6 +683,7 @@ public class MergeOnReadInputFormat
     private String defaultPartName;
     private long limit = -1;
     private boolean emitDelete = false;
+    private int operationPos = -1;
 
     public Builder config(Configuration conf) {
       this.conf = conf;
@@ -691,9 +720,14 @@ public class MergeOnReadInputFormat
       return this;
     }
 
+    public Builder operationPos(int operationPos) {
+      this.operationPos = operationPos;
+      return this;
+    }
+
     public MergeOnReadInputFormat build() {
       return new MergeOnReadInputFormat(conf, paths, tableState,
-          fieldTypes, defaultPartName, limit, emitDelete);
+          fieldTypes, defaultPartName, limit, emitDelete, operationPos);
     }
   }
 
@@ -711,5 +745,10 @@ public class MergeOnReadInputFormat
   @VisibleForTesting
   public void isEmitDelete(boolean emitDelete) {
     this.emitDelete = emitDelete;
+  }
+
+  @VisibleForTesting
+  public void setOperationPos(int operationPos) {
+    this.operationPos = operationPos;
   }
 }

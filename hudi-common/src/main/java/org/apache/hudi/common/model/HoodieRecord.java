@@ -180,6 +180,7 @@ public class HoodieRecord<T extends HoodieRecordPayload> implements Serializable
     sb.append("key=").append(key);
     sb.append(", currentLocation='").append(currentLocation).append('\'');
     sb.append(", newLocation='").append(newLocation).append('\'');
+    sb.append(", operation='").append(operation).append('\'');
     sb.append('}');
     return sb.toString();
   }

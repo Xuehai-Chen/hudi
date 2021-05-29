@@ -54,8 +54,8 @@ import org.apache.hudi.table.HoodieTable;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
 import org.apache.hadoop.fs.Path;
-import org.apache.log4j.LogManager;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -71,7 +71,7 @@ import java.util.stream.Collectors;
  */
 public class HoodieAppendHandle<T extends HoodieRecordPayload, I, K, O> extends HoodieWriteHandle<T, I, K, O> {
 
-  private static final Logger LOG = LogManager.getLogger(HoodieAppendHandle.class);
+  private static final Logger LOG = LoggerFactory.getLogger(HoodieAppendHandle.class);
   // This acts as the sequenceID for records written
   private static final AtomicLong RECORD_COUNTER = new AtomicLong(1);
 
@@ -205,6 +205,7 @@ public class HoodieAppendHandle<T extends HoodieRecordPayload, I, K, O> extends 
       Option<IndexedRecord> avroRecord = hoodieRecord.getData().getInsertValue(writerSchema);
       if (avroRecord.isPresent()) {
         // Convert GenericRecord to GenericRecord with hoodie commit metadata in schema
+        LOG.info("old avroRecord: {}", avroRecord.get());
         avroRecord = Option.of(rewriteRecord((GenericRecord) avroRecord.get()));
         String seqId =
             HoodieRecord.generateSequenceId(instantTime, getPartitionId(), RECORD_COUNTER.getAndIncrement());
@@ -212,6 +213,7 @@ public class HoodieAppendHandle<T extends HoodieRecordPayload, I, K, O> extends 
             hoodieRecord.getPartitionPath(), fileId);
         HoodieAvroUtils.addCommitMetadataToRecord((GenericRecord) avroRecord.get(), instantTime, seqId);
         addOperationToRecord((GenericRecord) avroRecord.get(), hoodieRecord.getOperation());
+        LOG.info("rewrite avroRecord: {}, operation: {}", avroRecord.get(), hoodieRecord.getOperation());
         if (isUpdateBucket(hoodieRecord)) {
           if (HoodieCdcOperation.isDelete(hoodieRecord.getOperation())) {
             recordsDeleted++;
@@ -446,6 +448,7 @@ public class HoodieAppendHandle<T extends HoodieRecordPayload, I, K, O> extends 
   }
 
   private void writeToBuffer(HoodieRecord<T> record) {
+    LOG.info("writeToBuffer record: {}", record);
     if (!partitionPath.equals(record.getPartitionPath())) {
       HoodieUpsertException failureEx = new HoodieUpsertException("mismatched partition path, record partition: "
           + record.getPartitionPath() + " but trying to insert into partition: " + partitionPath);

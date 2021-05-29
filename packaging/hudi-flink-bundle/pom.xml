@@ -141,10 +141,10 @@
                   <pattern>org.apache.avro.</pattern>
                   <shadedPattern>${flink.bundle.hive.shade.prefix}org.apache.avro.</shadedPattern>
                 </relocation>
-                <relocation>
-                  <pattern>org.apache.parquet.</pattern>
-                  <shadedPattern>${flink.bundle.hive.shade.prefix}org.apache.parquet.</shadedPattern>
-                </relocation>
+<!--                <relocation>-->
+<!--                  <pattern>org.apache.parquet.</pattern>-->
+<!--                  <shadedPattern>${flink.bundle.hive.shade.prefix}org.apache.parquet.</shadedPattern>-->
+<!--                </relocation>-->
                 <relocation>
                   <pattern>com.yammer.metrics.</pattern>
                   <shadedPattern>org.apache.hudi.com.yammer.metrics.</shadedPattern>

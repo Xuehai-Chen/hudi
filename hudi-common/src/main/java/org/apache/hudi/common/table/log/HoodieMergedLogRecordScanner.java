@@ -31,8 +31,8 @@ import org.apache.hudi.exception.HoodieIOException;
 
 import org.apache.avro.Schema;
 import org.apache.hadoop.fs.FileSystem;
-import org.apache.log4j.LogManager;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.Iterator;
@@ -55,7 +55,7 @@ import java.util.Map;
 public class HoodieMergedLogRecordScanner extends AbstractHoodieLogRecordScanner
     implements Iterable<HoodieRecord<? extends HoodieRecordPayload>> {
 
-  private static final Logger LOG = LogManager.getLogger(HoodieMergedLogRecordScanner.class);
+  private static final Logger LOG = LoggerFactory.getLogger(HoodieMergedLogRecordScanner.class);
 
   // Final map of compacted/merged records
   protected final ExternalSpillableMap<String, HoodieRecord<? extends HoodieRecordPayload>> records;
@@ -125,7 +125,8 @@ public class HoodieMergedLogRecordScanner extends AbstractHoodieLogRecordScanner
 
   @Override
   protected void processNextRecord(HoodieRecord<? extends HoodieRecordPayload> hoodieRecord) throws IOException {
-    String key = hoodieRecord.getRecordKey();
+    String key = hoodieRecord.getOperation() + hoodieRecord.getRecordKey();
+    LOG.info("processNextRecord, new hoodieRecord:{}, old hoodieRecord:{}", hoodieRecord, records.get(key));
     if (records.containsKey(key)) {
       // Merge and store the merged record. The HoodieRecordPayload implementation is free to decide what should be
       // done when a delete (empty payload) is encountered before or after an insert/update.

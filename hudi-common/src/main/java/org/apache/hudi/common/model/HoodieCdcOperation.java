@@ -27,7 +27,7 @@ public enum HoodieCdcOperation {
   /**
    * Insert operation.
    */
-  INSERT("I", (byte)0),
+  INSERT("+I", (byte)0),
   /**
    * Update operation with previous record content,
    * should be used together with {@link #UPDATE_AFTER} for modeling an update operation.
@@ -36,11 +36,11 @@ public enum HoodieCdcOperation {
   /**
    * Update operation with new record content.
    */
-  UPDATE_AFTER("U", (byte)2),
+  UPDATE_AFTER("+U", (byte)2),
   /**
    * Delete operation.
    */
-  DELETE("D", (byte)3);
+  DELETE("-D", (byte)3);
 
   private final String name;
 

@@ -442,7 +442,7 @@ public class HoodieDataSourceITCase extends AbstractTestBase {
         + "id1,Fabian,32,1970-01-01T00:00:04,par2, "
         + "id1,Jane,19,1970-01-01T00:00:06,par3, "
         + "id1,Phoebe,52,1970-01-01T00:00:08,par4]";
-    assertRowsEquals(result, expected, 3);
+    assertRowsEquals(result, expected, 3, true);
   }
 
   @Test

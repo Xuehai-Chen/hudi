@@ -57,6 +57,8 @@ import org.apache.parquet.column.ColumnDescriptor;
 import org.apache.parquet.column.page.PageReader;
 import org.apache.parquet.schema.OriginalType;
 import org.apache.parquet.schema.PrimitiveType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -79,6 +81,8 @@ import static org.apache.parquet.Preconditions.checkArgument;
  * based TIMESTAMP_MILLIS as ConvertedType, should remove when Flink supports that.
  */
 public class ParquetSplitReaderUtil {
+
+  private static Logger LOG = LoggerFactory.getLogger(ParquetSplitReaderUtil.class);
 
   /**
    * Util for generating partitioned {@link ParquetColumnarRowSplitReader}.
@@ -103,8 +107,9 @@ public class ParquetSplitReaderUtil {
         .mapToObj(i -> fullFieldNames[i])
         .filter(nonPartNames::contains).collect(Collectors.toList());
 
+    List<String> fullFieldNameList = Arrays.asList(fullFieldNames);
     int[] selParquetFields = selNonPartNames.stream()
-        .mapToInt(nonPartNames::indexOf)
+        .mapToInt(fullFieldNameList::indexOf)
         .toArray();
 
     ParquetColumnarRowSplitReader.ColumnBatchGenerator gen = readVectors -> {
@@ -119,6 +124,8 @@ public class ParquetSplitReaderUtil {
       }
       return new VectorizedColumnBatch(vectors);
     };
+    LOG.info("fullFieldNames: {}, fullFieldTypes: {}, nonPartNames: {}, selNonPartNames: {}, selParquetFields: {}",
+            fullFieldNames, fullFieldTypes, nonPartNames, selNonPartNames, selParquetFields);
 
     return new ParquetColumnarRowSplitReader(
         utcTimestamp,

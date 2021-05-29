@@ -114,6 +114,8 @@ public class SpillableMapUtils {
     String partitionPath = rec.get(HoodieRecord.PARTITION_PATH_METADATA_FIELD).toString();
     HoodieRecord<? extends HoodieRecordPayload> hoodieRecord = new HoodieRecord<>(new HoodieKey(recKey, partitionPath),
         ReflectionUtils.loadPayload(payloadClazz, new Object[] {Option.of(rec)}, Option.class));
+    Object operation = rec.get(HoodieRecord.CDC_OPERATION_METADATA_FIELD);
+    hoodieRecord.setOperation(operation == null ? null : operation.toString());
     return (R) hoodieRecord;
   }
 
